@@ -6,6 +6,10 @@ use chrono_tz::Tz;
 use clap::{Args, Parser, Subcommand};
 use directories::ProjectDirs;
 use humantime::parse_duration;
+use ics::{
+    Event as IcsEvent, ICalendar, parameters,
+    properties::{Description as IcsDescription, DtEnd, DtStart, Summary},
+};
 use rss::{ChannelBuilder, GuidBuilder, ItemBuilder};
 use rusqlite::{Connection, params};
 use serde::Deserialize;
@@ -20,6 +24,7 @@ fn main() -> Result<()> {
         Command::Add(cmd) => add_event(&mut storage, cmd),
         Command::List(cmd) => list_events(&storage, cmd),
         Command::Rss(cmd) => generate_rss(&storage, cmd),
+        Command::Ical(cmd) => generate_ical(&storage, cmd),
     }
 }
 
@@ -132,7 +137,71 @@ fn generate_rss(storage: &Storage, cmd: RssCommand) -> Result<()> {
     Ok(())
 }
 
-fn format_event_timing(event: &Event, zone: &DisplayZone) -> Result<String> {
+fn generate_ical(storage: &Storage, cmd: IcalCommand) -> Result<()> {
+    let range = if let Some(day) = cmd.day {
+        Some(day_range(&day)?)
+    } else {
+        None
+    };
+    let zone = parse_timezone(cmd.tz.as_deref())?;
+    let events = storage.fetch_events(range)?;
+
+    let mut calendar = ICalendar::new("2.0", "toki-note");
+    let mut emitted = false;
+    for event in events {
+        emitted = true;
+        let uid = format!("{}@toki-note", event.id);
+        let dtstamp = parse_utc(&event.starts_at)?
+            .format("%Y%m%dT%H%M%SZ")
+            .to_string();
+        let mut vevent = IcsEvent::new(uid, dtstamp);
+
+        if event.all_day {
+            let start_day = event.starts_at[..10].to_string();
+            let end_day = event.ends_at[..10].to_string();
+            let mut start_prop = DtStart::new(start_day);
+            start_prop.append(parameters!("VALUE" => "DATE"));
+            let mut end_prop = DtEnd::new(end_day);
+            end_prop.append(parameters!("VALUE" => "DATE"));
+            vevent.push(start_prop);
+            vevent.push(end_prop);
+        } else {
+            let (start_value, start_tz) = format_datetime_for_ics(&event.starts_at, &zone)?;
+            let (end_value, end_tz) = format_datetime_for_ics(&event.ends_at, &zone)?;
+            let mut start_prop = DtStart::new(start_value);
+            if let Some(tz_name) = start_tz {
+                start_prop.append(parameters!("TZID" => tz_name));
+            }
+            let mut end_prop = DtEnd::new(end_value);
+            if let Some(tz_name) = end_tz {
+                end_prop.append(parameters!("TZID" => tz_name));
+            }
+            vevent.push(start_prop);
+            vevent.push(end_prop);
+        }
+
+        vevent.push(Summary::new(event.title.clone()));
+        let mut description_parts = vec![format_event_timing(&event, &zone)?];
+        if !event.note.is_empty() {
+            description_parts.push(event.note.clone());
+        }
+        if !event.tags.is_empty() {
+            description_parts.push(format!("tags: {}", event.tags.join(", ")));
+        }
+        vevent.push(IcsDescription::new(description_parts.join("\n")));
+
+        calendar.add_event(vevent);
+    }
+
+    if !emitted {
+        eprintln!("No events found; emitting empty calendar");
+    }
+
+    print!("{}", calendar.to_string());
+    Ok(())
+}
+
+fn format_event_timing(event: &StoredEvent, zone: &DisplayZone) -> Result<String> {
     let start_utc = parse_utc(&event.starts_at)?;
     let end_utc = parse_utc(&event.ends_at)?;
     match zone {
@@ -289,6 +358,20 @@ fn parse_timezone(input: Option<&str>) -> Result<DisplayZone> {
     }
 }
 
+fn format_datetime_for_ics(value: &str, zone: &DisplayZone) -> Result<(String, Option<String>)> {
+    let utc = parse_utc(value)?;
+    match zone {
+        DisplayZone::Local => Ok((utc.format("%Y%m%dT%H%M%SZ").to_string(), None)),
+        DisplayZone::Named(tz) => {
+            let localized = utc.with_timezone(tz);
+            Ok((
+                localized.format("%Y%m%dT%H%M%S").to_string(),
+                Some(tz.to_string()),
+            ))
+        }
+    }
+}
+
 fn resolve_database_path(input: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(path) = input {
         return Ok(path);
@@ -345,6 +428,8 @@ enum Command {
     List(ListCommand),
     /// Emit events as an RSS feed
     Rss(RssCommand),
+    /// Emit an iCalendar (.ics) feed
+    Ical(IcalCommand),
 }
 
 #[derive(Args)]
@@ -399,6 +484,16 @@ struct RssCommand {
     /// Channel description
     #[arg(long)]
     description: Option<String>,
+}
+
+#[derive(Args)]
+struct IcalCommand {
+    /// Optional day filter (UTC)
+    #[arg(long)]
+    day: Option<String>,
+    /// Override timezone used for timed events
+    #[arg(long = "tz")]
+    tz: Option<String>,
 }
 
 struct Storage {
@@ -467,7 +562,7 @@ impl Storage {
         Ok(id)
     }
 
-    fn fetch_events(&self, day_range: Option<(String, String)>) -> Result<Vec<Event>> {
+    fn fetch_events(&self, day_range: Option<(String, String)>) -> Result<Vec<StoredEvent>> {
         let sql = if day_range.is_some() {
             "SELECT id, title, starts_at, ends_at, note, all_day FROM events \
              WHERE starts_at < ?2 AND ends_at > ?1 ORDER BY starts_at"
@@ -489,7 +584,7 @@ impl Storage {
             .prepare("SELECT tag FROM event_tags WHERE event_id = ?1 ORDER BY tag")?;
 
         while let Some(row) = rows.next()? {
-            let mut event = Event {
+            let mut event = StoredEvent {
                 id: row.get(0)?,
                 title: row.get(1)?,
                 starts_at: row.get(2)?,
@@ -520,7 +615,7 @@ struct NewEvent {
     tags: Vec<String>,
 }
 
-struct Event {
+struct StoredEvent {
     id: i64,
     title: String,
     starts_at: String,

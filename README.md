@@ -62,6 +62,12 @@ toki-note rss --title "Private schedule" --link https://example.com --tz Asia/To
 
 You can combine `--day` and `--tz` to emit limited feeds (e.g., `toki-note rss --day 2025-08-10 --tz Europe/Paris`).
 
+Generate an iCalendar file:
+
+```bash
+toki-note ical --day 2025-08-10 --tz America/Los_Angeles > schedule.ics
+```
+
 ## Configuration
 
 Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). Only the database path is supported right now:
@@ -79,3 +85,8 @@ This file is read on startup before CLI flags are processed; flags always win ov
 - `cargo check` for fast feedback; `cargo test` once querying/listing commands land.
 
 The SQLite schema is created automatically on first run and consists of `events` and `event_tags`. Each transaction writes the event first, then lowercases all tags before storing them to avoid duplicates. Extend the CLI by adding more `Subcommand` variants in `src/main.rs`. Keep DB migrations backward compatible for existing `.db` files.
+
+## Contributors
+
+- katsyoshi
+- Codex (AI assistant)
