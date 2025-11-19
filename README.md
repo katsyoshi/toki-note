@@ -36,6 +36,24 @@ All-day entries must use explicit `--end` (or omit it for a single day); `--dura
 
 Successful inserts print the assigned row id, which will later be used for listing or deleting records.
 
+List all tracked events, ordered by start time (output uses your system timezone unless overridden with `--tz`):
+
+```bash
+toki-note list
+```
+
+Filter for a specific day (UTC boundary for the filter; display timezone may be overridden):
+
+```bash
+toki-note list --day 2025-08-10
+```
+
+Force a specific timezone (use IANA names such as `Europe/Paris` or `America/New_York`):
+
+```bash
+toki-note list --tz Europe/Paris
+```
+
 ## Configuration
 
 Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). Only the database path is supported right now:
@@ -52,4 +70,4 @@ This file is read on startup before CLI flags are processed; flags always win ov
 - `cargo clippy --all-targets --all-features` to lint and refuse regressions.
 - `cargo check` for fast feedback; `cargo test` once querying/listing commands land.
 
-The SQLite schema is created automatically on first run and consists of `events` and `event_tags`. Each transaction writes the event first, then lowercases all tags before storing them to avoid duplicates. Extend the CLI by adding more `Subcommand` variants in `src/main.rs`. Keep DB migrations backward compatible for existing `.db` files.*** End Patch
+The SQLite schema is created automatically on first run and consists of `events` and `event_tags`. Each transaction writes the event first, then lowercases all tags before storing them to avoid duplicates. Extend the CLI by adding more `Subcommand` variants in `src/main.rs`. Keep DB migrations backward compatible for existing `.db` files.

@@ -1,7 +1,8 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Local, NaiveDate, Utc};
+use chrono_tz::Tz;
 use clap::{Args, Parser, Subcommand};
 use directories::ProjectDirs;
 use humantime::parse_duration;
@@ -16,6 +17,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Add(cmd) => add_event(&mut storage, cmd),
+        Command::List(cmd) => list_events(&storage, cmd),
     }
 }
 
@@ -41,6 +43,92 @@ fn add_event(storage: &mut Storage, cmd: AddCommand) -> Result<()> {
     let row_id = storage.insert_event(new_event)?;
     println!("Stored event #{row_id}");
     Ok(())
+}
+
+fn list_events(storage: &Storage, cmd: ListCommand) -> Result<()> {
+    let range = if let Some(day) = cmd.day {
+        Some(day_range(&day)?)
+    } else {
+        None
+    };
+    let events = storage.fetch_events(range)?;
+    let tz = parse_timezone(cmd.tz.as_deref())?;
+
+    if events.is_empty() {
+        println!("No events found");
+        return Ok(());
+    }
+
+    for event in events {
+        let timing = format_event_timing(&event, &tz)?;
+        println!("#{} {}", event.id, event.title);
+        println!("  {timing}");
+        if !event.tags.is_empty() {
+            println!("  tags: {}", event.tags.join(", "));
+        }
+        if !event.note.is_empty() {
+            println!("  note: {}", event.note);
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+fn format_event_timing(event: &Event, zone: &DisplayZone) -> Result<String> {
+    let start_utc = parse_utc(&event.starts_at)?;
+    let end_utc = parse_utc(&event.ends_at)?;
+    match zone {
+        DisplayZone::Local => {
+            if event.all_day {
+                let start = start_utc.with_timezone(&Local);
+                let end = end_utc.with_timezone(&Local);
+                let end_inclusive = end
+                    .date_naive()
+                    .pred_opt()
+                    .unwrap_or_else(|| end.date_naive());
+                Ok(format!(
+                    "{} -> {} (all-day, local)",
+                    start.date_naive(),
+                    end_inclusive
+                ))
+            } else {
+                let start = start_utc.with_timezone(&Local);
+                let end = end_utc.with_timezone(&Local);
+                Ok(format!(
+                    "{} -> {} ({})",
+                    start.format("%Y-%m-%d %H:%M %Z"),
+                    end.format("%Y-%m-%d %H:%M %Z"),
+                    start.offset()
+                ))
+            }
+        }
+        DisplayZone::Named(tz) => {
+            if event.all_day {
+                let start = start_utc.with_timezone(tz);
+                let end = end_utc.with_timezone(tz);
+                let end_inclusive = end
+                    .date_naive()
+                    .pred_opt()
+                    .unwrap_or_else(|| end.date_naive());
+                Ok(format!(
+                    "{} -> {} (all-day, {})",
+                    start.date_naive(),
+                    end_inclusive,
+                    tz
+                ))
+            } else {
+                let start = start_utc.with_timezone(tz);
+                let end = end_utc.with_timezone(tz);
+                Ok(format!(
+                    "{} -> {} ({})",
+                    start.format("%Y-%m-%d %H:%M %Z"),
+                    end.format("%Y-%m-%d %H:%M %Z"),
+                    tz
+                ))
+            }
+        }
+    }
 }
 
 fn parse_all_day_range(cmd: &AddCommand) -> Result<EventTiming> {
@@ -72,6 +160,21 @@ fn parse_all_day_range(cmd: &AddCommand) -> Result<EventTiming> {
 fn parse_date(input: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(input, "%Y-%m-%d")
         .with_context(|| format!("expected YYYY-MM-DD date, got '{input}'"))
+}
+
+fn day_range(day: &str) -> Result<(String, String)> {
+    let date = parse_date(day)?;
+    let start = date
+        .and_hms_opt(0, 0, 0)
+        .ok_or_else(|| anyhow!("invalid day"))?
+        .and_utc();
+    let end = date
+        .succ_opt()
+        .ok_or_else(|| anyhow!("date overflow"))?
+        .and_hms_opt(0, 0, 0)
+        .ok_or_else(|| anyhow!("invalid day"))?
+        .and_utc();
+    Ok((start.to_rfc3339(), end.to_rfc3339()))
 }
 
 fn parse_timed_range(cmd: &AddCommand) -> Result<EventTiming> {
@@ -110,6 +213,23 @@ fn parse_timed_range(cmd: &AddCommand) -> Result<EventTiming> {
 struct EventTiming {
     starts_at: String,
     ends_at: String,
+}
+
+fn parse_utc(value: &str) -> Result<DateTime<Utc>> {
+    Ok(DateTime::parse_from_rfc3339(value)
+        .with_context(|| format!("invalid timestamp '{value}'"))?
+        .with_timezone(&Utc))
+}
+
+fn parse_timezone(input: Option<&str>) -> Result<DisplayZone> {
+    if let Some(value) = input {
+        let tz = value
+            .parse::<Tz>()
+            .map_err(|_| anyhow!("unknown timezone '{value}'"))?;
+        Ok(DisplayZone::Named(tz))
+    } else {
+        Ok(DisplayZone::Local)
+    }
 }
 
 fn resolve_database_path(input: Option<PathBuf>) -> Result<PathBuf> {
@@ -155,10 +275,17 @@ struct Config {
     database: Option<PathBuf>,
 }
 
+enum DisplayZone {
+    Local,
+    Named(Tz),
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Add a schedule entry
     Add(AddCommand),
+    /// List stored schedule entries
+    List(ListCommand),
 }
 
 #[derive(Args)]
@@ -184,6 +311,16 @@ struct AddCommand {
     /// Duration syntax like 30m, 2h, 1h30m; ignored when --end is provided
     #[arg(long)]
     duration: Option<String>,
+}
+
+#[derive(Args)]
+struct ListCommand {
+    /// Filter by a specific day (UTC) e.g. 2025-06-01
+    #[arg(long)]
+    day: Option<String>,
+    /// Timezone for display, e.g. Europe/Paris; defaults to local system zone
+    #[arg(long = "tz")]
+    tz: Option<String>,
 }
 
 struct Storage {
@@ -251,6 +388,49 @@ impl Storage {
         tx.commit()?;
         Ok(id)
     }
+
+    fn fetch_events(&self, day_range: Option<(String, String)>) -> Result<Vec<Event>> {
+        let sql = if day_range.is_some() {
+            "SELECT id, title, starts_at, ends_at, note, all_day FROM events \
+             WHERE starts_at < ?2 AND ends_at > ?1 ORDER BY starts_at"
+        } else {
+            "SELECT id, title, starts_at, ends_at, note, all_day FROM events \
+             ORDER BY starts_at"
+        };
+
+        let mut stmt = self.conn.prepare(sql)?;
+        let mut rows = if let Some((start, end)) = day_range {
+            stmt.query(params![start, end])?
+        } else {
+            stmt.query([])?
+        };
+
+        let mut events = Vec::new();
+        let mut tag_stmt = self
+            .conn
+            .prepare("SELECT tag FROM event_tags WHERE event_id = ?1 ORDER BY tag")?;
+
+        while let Some(row) = rows.next()? {
+            let mut event = Event {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                starts_at: row.get(2)?,
+                ends_at: row.get(3)?,
+                note: row.get(4)?,
+                all_day: row.get::<_, i64>(5)? != 0,
+                tags: Vec::new(),
+            };
+
+            let tag_rows = tag_stmt.query_map(params![event.id], |tag_row| tag_row.get(0))?;
+            for tag in tag_rows {
+                event.tags.push(tag?);
+            }
+
+            events.push(event);
+        }
+
+        Ok(events)
+    }
 }
 
 struct NewEvent {
@@ -258,6 +438,16 @@ struct NewEvent {
     note: String,
     starts_at: String,
     ends_at: String,
+    all_day: bool,
+    tags: Vec<String>,
+}
+
+struct Event {
+    id: i64,
+    title: String,
+    starts_at: String,
+    ends_at: String,
+    note: String,
     all_day: bool,
     tags: Vec<String>,
 }
