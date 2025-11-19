@@ -62,18 +62,26 @@ toki-note rss --title "Private schedule" --link https://example.com --tz Asia/To
 
 You can combine `--day` and `--tz` to emit limited feeds (e.g., `toki-note rss --day 2025-08-10 --tz Europe/Paris`).
 
+Use `--output` to write the feed directly:
+
+```bash
+toki-note rss --tz Asia/Tokyo --output ~/.cache/toki-note/feed.xml
+```
+
 Generate an iCalendar file:
 
 ```bash
-toki-note ical --day 2025-08-10 --tz America/Los_Angeles > schedule.ics
+toki-note ical --day 2025-08-10 --tz America/Los_Angeles --output schedule.ics
 ```
 
 ## Configuration
 
-Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). Only the database path is supported right now:
+Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed outputs:
 
 ```toml
 database = "/path/to/custom.db"
+rss_output = "/path/to/feed.xml"
+ical_output = "/path/to/feed.ics"
 ```
 
 This file is read on startup before CLI flags are processed; flags always win over config values.

@@ -17,14 +17,24 @@ use serde::Deserialize;
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config()?;
-    let db_path = resolve_database_path(cli.database.or(config.database))?;
+    let db_path = resolve_database_path(cli.database.or(config.database.clone()))?;
     let mut storage = Storage::new(&db_path)?;
 
     match cli.command {
         Command::Add(cmd) => add_event(&mut storage, cmd),
         Command::List(cmd) => list_events(&storage, cmd),
-        Command::Rss(cmd) => generate_rss(&storage, cmd),
-        Command::Ical(cmd) => generate_ical(&storage, cmd),
+        Command::Rss(mut cmd) => {
+            if cmd.output.is_none() {
+                cmd.output = config.rss_output.clone();
+            }
+            generate_rss(&storage, cmd)
+        }
+        Command::Ical(mut cmd) => {
+            if cmd.output.is_none() {
+                cmd.output = config.ical_output.clone();
+            }
+            generate_ical(&storage, cmd)
+        }
     }
 }
 
@@ -133,8 +143,7 @@ fn generate_rss(storage: &Storage, cmd: RssCommand) -> Result<()> {
         .items(items)
         .build();
 
-    println!("{}", channel.to_string());
-    Ok(())
+    write_output(channel.to_string(), cmd.output)
 }
 
 fn generate_ical(storage: &Storage, cmd: IcalCommand) -> Result<()> {
@@ -197,8 +206,7 @@ fn generate_ical(storage: &Storage, cmd: IcalCommand) -> Result<()> {
         eprintln!("No events found; emitting empty calendar");
     }
 
-    print!("{}", calendar.to_string());
-    Ok(())
+    write_output(calendar.to_string(), cmd.output)
 }
 
 fn format_event_timing(event: &StoredEvent, zone: &DisplayZone) -> Result<String> {
@@ -372,6 +380,22 @@ fn format_datetime_for_ics(value: &str, zone: &DisplayZone) -> Result<(String, O
     }
 }
 
+fn write_output(content: String, target: Option<PathBuf>) -> Result<()> {
+    if let Some(path) = target {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+        }
+        fs::write(&path, content).with_context(|| format!("failed to write {}", path.display()))?;
+        eprintln!("Wrote {}", path.display());
+    } else {
+        print!("{}", content);
+    }
+    Ok(())
+}
+
 fn resolve_database_path(input: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(path) = input {
         return Ok(path);
@@ -413,6 +437,8 @@ struct Cli {
 #[derive(Clone, Debug, Default, Deserialize)]
 struct Config {
     database: Option<PathBuf>,
+    rss_output: Option<PathBuf>,
+    ical_output: Option<PathBuf>,
 }
 
 enum DisplayZone {
@@ -484,6 +510,9 @@ struct RssCommand {
     /// Channel description
     #[arg(long)]
     description: Option<String>,
+    /// Write RSS XML to this file instead of stdout
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -494,6 +523,9 @@ struct IcalCommand {
     /// Override timezone used for timed events
     #[arg(long = "tz")]
     tz: Option<String>,
+    /// Write ICS to this file instead of stdout
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 struct Storage {
