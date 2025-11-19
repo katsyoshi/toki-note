@@ -1,14 +1,18 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, NaiveDate, Utc};
 use clap::{Args, Parser, Subcommand};
+use directories::ProjectDirs;
 use humantime::parse_duration;
 use rusqlite::{Connection, params};
+use serde::Deserialize;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let mut storage = Storage::new(&cli.database)?;
+    let config = load_config()?;
+    let db_path = resolve_database_path(cli.database.or(config.database))?;
+    let mut storage = Storage::new(&db_path)?;
 
     match cli.command {
         Command::Add(cmd) => add_event(&mut storage, cmd),
@@ -108,14 +112,47 @@ struct EventTiming {
     ends_at: String,
 }
 
+fn resolve_database_path(input: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(path) = input {
+        return Ok(path);
+    }
+
+    if let Some(project_dirs) = ProjectDirs::from("dev", "toki-note", "toki-note") {
+        let mut path = project_dirs.data_dir().to_path_buf();
+        path.push("toki-note.db");
+        Ok(path)
+    } else {
+        Ok(PathBuf::from("toki-note.db"))
+    }
+}
+
+fn load_config() -> Result<Config> {
+    if let Some(project_dirs) = ProjectDirs::from("dev", "toki-note", "toki-note") {
+        let path = project_dirs.config_dir().join("config.toml");
+        if path.exists() {
+            let contents = fs::read_to_string(&path)
+                .with_context(|| format!("failed to read config {}", path.display()))?;
+            let cfg: Config = toml::from_str(&contents)
+                .with_context(|| format!("failed to parse {}", path.display()))?;
+            return Ok(cfg);
+        }
+    }
+    Ok(Config::default())
+}
+
 #[derive(Parser)]
 #[command(version, about = "CLI scheduler backed by SQLite")]
 struct Cli {
     /// Path to the SQLite database file
-    #[arg(long, default_value = "toki-note.db", global = true)]
-    database: PathBuf,
+    #[arg(long, global = true)]
+    database: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct Config {
+    database: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -155,6 +192,13 @@ struct Storage {
 
 impl Storage {
     fn new(path: &PathBuf) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+        }
+
         let conn = Connection::open(path)
             .with_context(|| format!("failed to open database at {}", path.display()))?;
         let storage = Self { conn };

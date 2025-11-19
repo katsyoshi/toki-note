@@ -9,7 +9,7 @@ rustup default stable   # first-time toolchain setup
 cargo build             # compile the CLI
 ```
 
-The binary lookups `toki-note.db` in the current directory by default. Override with `--database path/to/file.db` when needed.
+By default the binary writes to `$XDG_DATA_HOME/toki-note/toki-note.db` (e.g. `~/.local/share/toki-note/toki-note.db`). Override with `--database path/to/file.db` or set the `database` field in the config file described below.
 
 ## Usage
 
@@ -35,6 +35,16 @@ toki-note add --title "Vacation" --start 2025-08-10 --end 2025-08-15 --all-day -
 All-day entries must use explicit `--end` (or omit it for a single day); `--duration` is ignored when `--all-day` is set.
 
 Successful inserts print the assigned row id, which will later be used for listing or deleting records.
+
+## Configuration
+
+Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). Only the database path is supported right now:
+
+```toml
+database = "/path/to/custom.db"
+```
+
+This file is read on startup before CLI flags are processed; flags always win over config values.
 
 ## Development
 
