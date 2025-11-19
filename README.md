@@ -54,6 +54,14 @@ Force a specific timezone (use IANA names such as `Europe/Paris` or `America/New
 toki-note list --tz Europe/Paris
 ```
 
+Generate an RSS feed (stdout) and redirect to a file:
+
+```bash
+toki-note rss --title "Private schedule" --link https://example.com --tz Asia/Tokyo > schedule.xml
+```
+
+You can combine `--day` and `--tz` to emit limited feeds (e.g., `toki-note rss --day 2025-08-10 --tz Europe/Paris`).
+
 ## Configuration
 
 Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). Only the database path is supported right now:
