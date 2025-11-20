@@ -89,16 +89,30 @@ Import events from an iCalendar file (duplicates are skipped by UID):
 toki-note import --path path/to/events.ics
 ```
 
+### Sharing a database over Tailscale
+
+If you have multiple machines connected via Tailscale (or another VPN) and want to share the same SQLite database, you can:
+
+1. Expose a shared directory on one machine (NFS/Samba/SSHFS/etc.) over the VPN
+2. Mount that directory on other machines
+3. Point `toki-note` to the shared file, e.g. `toki-note --database /mnt/toki-note/toki-note.db`
+
+SQLite is not designed for concurrent writers over a network filesystem, so try to avoid simultaneous writes. This setup is best when only one machine edits at a time (read-only access from others is fine).
+
 ## Configuration
 
 Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed outputs:
 
 ```toml
 database = "/path/to/custom.db"
-rss_output = "/path/to/feed.xml"
 ical_output = "/path/to/feed.ics"
 import_source = "/path/to/events.ics"
+
+[rss]
+output = "/path/to/feed.xml"
 ```
+
+The legacy `rss_output = "..."` key is still supported for backward compatibility.
 
 This file is read on startup before CLI flags are processed; flags always win over config values.
 
