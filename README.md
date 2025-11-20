@@ -48,6 +48,8 @@ Filter for a specific day (UTC boundary for the filter; display timezone may be 
 toki-note list --day 2025-08-10
 ```
 
+Short flags are available, e.g. `toki-note list -d 2025-08-10 -z Europe/Paris` or `toki-note rss -o feed.xml`.
+
 Force a specific timezone (use IANA names such as `Europe/Paris` or `America/New_York`):
 
 ```bash
