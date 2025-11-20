@@ -70,11 +70,36 @@ pub fn list_events(storage: &Storage, cmd: ListCommand) -> Result<()> {
 }
 
 pub fn delete_event(storage: &mut Storage, cmd: DeleteCommand) -> Result<()> {
-    let removed = storage.delete_event(cmd.id)?;
-    if removed {
-        println!("Deleted event #{}", cmd.id);
-    } else {
-        println!("No event found with id {}", cmd.id);
+    match (cmd.id, cmd.title.as_deref()) {
+        (Some(id), None) => {
+            let removed = storage.delete_by_id(id)?;
+            if removed {
+                println!("Deleted event #{id}");
+            } else {
+                println!("No event found with id {id}");
+            }
+        }
+        (None, Some(title)) => {
+            let removed = storage.delete_by_title(title)?;
+            if removed > 0 {
+                println!("Deleted {removed} event(s) titled '{title}'");
+            } else {
+                println!("No events found titled '{title}'");
+            }
+        }
+        (Some(id), Some(title)) => {
+            let removed = storage.delete_by_id(id)?;
+            if removed {
+                println!("Deleted event #{id} titled '{title}'");
+            } else {
+                println!("No event #{id}; attempting title deletion");
+                let removed = storage.delete_by_title(title)?;
+                println!("Deleted {removed} event(s) titled '{title}'");
+            }
+        }
+        (None, None) => {
+            return Err(anyhow!("Provide either --id or --title"));
+        }
     }
     Ok(())
 }

@@ -100,5 +100,8 @@ pub struct IcalCommand {
 pub struct DeleteCommand {
     /// Numeric event id to remove
     #[arg(long)]
-    pub id: i64,
+    pub id: Option<i64>,
+    /// Event title to remove (deletes matching rows)
+    #[arg(long)]
+    pub title: Option<String>,
 }

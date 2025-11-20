@@ -69,11 +69,18 @@ impl Storage {
         Ok(id)
     }
 
-    pub fn delete_event(&mut self, id: i64) -> Result<bool> {
+    pub fn delete_by_id(&mut self, id: i64) -> Result<bool> {
         let affected = self
             .conn
             .execute("DELETE FROM events WHERE id = ?1", params![id])?;
         Ok(affected > 0)
+    }
+
+    pub fn delete_by_title(&mut self, title: &str) -> Result<usize> {
+        let affected = self
+            .conn
+            .execute("DELETE FROM events WHERE title = ?1", params![title])?;
+        Ok(affected as usize)
     }
 
     pub fn fetch_events(&self, day_range: Option<(String, String)>) -> Result<Vec<StoredEvent>> {

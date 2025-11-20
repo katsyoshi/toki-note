@@ -54,10 +54,11 @@ Force a specific timezone (use IANA names such as `Europe/Paris` or `America/New
 toki-note list --tz Europe/Paris
 ```
 
-Delete an event by id (see ids from `list` output):
+Delete an event by id (see ids from `list` output) or by title:
 
 ```bash
 toki-note delete --id 42
+toki-note delete --title "1:1 sync"
 ```
 
 Generate an RSS feed (stdout) and redirect to a file:
