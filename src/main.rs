@@ -22,19 +22,19 @@ fn main() -> Result<()> {
         Command::Delete(cmd) => delete_event(&mut storage, cmd),
         Command::Rss(mut cmd) => {
             if cmd.output.is_none() {
-                cmd.output = config.rss_output.clone();
+                cmd.output = config.rss_output_path();
             }
             generate_rss(&storage, cmd)
         }
         Command::Ical(mut cmd) => {
             if cmd.output.is_none() {
-                cmd.output = config.ical_output.clone();
+                cmd.output = config.ical_output_path();
             }
             generate_ical(&storage, cmd)
         }
         Command::Import(mut cmd) => {
             if cmd.path.is_none() {
-                cmd.path = config.import_source.clone();
+                cmd.path = config.import_source_path();
             }
             import_ics(&mut storage, cmd)
         }

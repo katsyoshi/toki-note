@@ -101,18 +101,22 @@ SQLite is not designed for concurrent writers over a network filesystem, so try 
 
 ## Configuration
 
-Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed outputs:
+Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed/import outputs:
 
 ```toml
 database = "/path/to/custom.db"
-ical_output = "/path/to/feed.ics"
-import_source = "/path/to/events.ics"
 
 [rss]
 output = "/path/to/feed.xml"
+
+[ical]
+output = "/path/to/feed.ics"
+
+[import]
+source = "/path/to/events.ics"
 ```
 
-The legacy `rss_output = "..."` key is still supported for backward compatibility.
+The legacy flat keys (`rss_output`, `ical_output`, `import_source`) are still supported for backward compatibility.
 
 This file is read on startup before CLI flags are processed; flags always win over config values.
 

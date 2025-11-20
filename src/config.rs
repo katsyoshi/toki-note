@@ -7,9 +7,31 @@ use serde::Deserialize;
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
     pub database: Option<PathBuf>,
+    #[serde(default)]
+    pub rss: RssSection,
+    #[serde(default)]
+    pub ical: IcalSection,
+    #[serde(default)]
+    pub import: ImportSection,
+    // legacy flat keys
     pub rss_output: Option<PathBuf>,
     pub ical_output: Option<PathBuf>,
     pub import_source: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RssSection {
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct IcalSection {
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct ImportSection {
+    pub source: Option<PathBuf>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -37,5 +59,25 @@ pub fn resolve_database_path(input: Option<PathBuf>) -> Result<PathBuf> {
         Ok(path)
     } else {
         Ok(PathBuf::from("toki-note.db"))
+    }
+}
+
+impl Config {
+    pub fn rss_output_path(&self) -> Option<PathBuf> {
+        self.rss.output.clone().or_else(|| self.rss_output.clone())
+    }
+
+    pub fn ical_output_path(&self) -> Option<PathBuf> {
+        self.ical
+            .output
+            .clone()
+            .or_else(|| self.ical_output.clone())
+    }
+
+    pub fn import_source_path(&self) -> Option<PathBuf> {
+        self.import
+            .source
+            .clone()
+            .or_else(|| self.import_source.clone())
     }
 }
