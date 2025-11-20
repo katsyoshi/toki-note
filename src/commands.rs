@@ -242,11 +242,14 @@ pub fn import_ics(storage: &mut Storage, cmd: ImportCommand) -> Result<()> {
         for event in calendar.events {
             match convert_ical_event(&event) {
                 Ok(Some(new_event)) => {
-                    if let Some(uid) = new_event.uid.as_deref() {
-                        if storage.has_event_with_uid(uid)? {
-                            skipped += 1;
-                            continue;
-                        }
+                    if new_event
+                        .uid
+                        .as_deref()
+                        .filter(|uid| storage.has_event_with_uid(uid).unwrap_or(false))
+                        .is_some()
+                    {
+                        skipped += 1;
+                        continue;
                     }
                     storage.insert_event(new_event)?;
                     imported += 1;
