@@ -394,11 +394,12 @@ fn format_datetime_for_ics(value: &str, zone: &DisplayZone) -> Result<(String, O
 
 fn write_output(content: String, target: Option<PathBuf>) -> Result<()> {
     if let Some(path) = target {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("failed to create {}", parent.display()))?;
-            }
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
         }
         fs::write(&path, content).with_context(|| format!("failed to write {}", path.display()))?;
         eprintln!("Wrote {}", path.display());
