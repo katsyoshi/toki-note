@@ -19,5 +19,9 @@ Add unit tests near the implementation inside `#[cfg(test)] mod tests`. Integrat
 ## Commit & Pull Request Guidelines
 Commits should be scoped and imperative: `Add parser for front-matter`, `Fix panic on empty note`. Squash noisy WIP commits before pushing. Pull requests must describe the motivation, summarize implementation, and list verification steps (commands run, screenshots when CLI output changes). Cross-reference issues with `Closes #123`. Keep PRs self-contained, avoid unrelated formatting, and ensure CI passes `check`, `fmt`, `clippy`, and `test` stages before requesting review.
 
+Each pull request description should include:
+- `## Summary` explaining the main changes
+- `## Highlights` describing why the change matters or key benefits
+
 ## Security & Configuration Tips
 Never commit secrets or local `.env` files; prefer environment variables injected at runtime. Validate and sanitize all file paths before reading user content. When adding dependencies, ensure they are actively maintained and avoid enabling default features you do not use to minimize the attack surface.
