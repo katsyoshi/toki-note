@@ -69,6 +69,13 @@ impl Storage {
         Ok(id)
     }
 
+    pub fn delete_event(&mut self, id: i64) -> Result<bool> {
+        let affected = self
+            .conn
+            .execute("DELETE FROM events WHERE id = ?1", params![id])?;
+        Ok(affected > 0)
+    }
+
     pub fn fetch_events(&self, day_range: Option<(String, String)>) -> Result<Vec<StoredEvent>> {
         let sql = if day_range.is_some() {
             "SELECT id, title, starts_at, ends_at, note, all_day FROM events \

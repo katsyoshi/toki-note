@@ -6,7 +6,7 @@ mod storage;
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Command};
-use commands::{add_event, generate_ical, generate_rss, list_events};
+use commands::{add_event, delete_event, generate_ical, generate_rss, list_events};
 use config::{load_config, resolve_database_path};
 use storage::Storage;
 
@@ -19,6 +19,7 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Add(cmd) => add_event(&mut storage, cmd),
         Command::List(cmd) => list_events(&storage, cmd),
+        Command::Delete(cmd) => delete_event(&mut storage, cmd),
         Command::Rss(mut cmd) => {
             if cmd.output.is_none() {
                 cmd.output = config.rss_output.clone();

@@ -18,6 +18,8 @@ pub enum Command {
     Add(AddCommand),
     /// List stored schedule entries
     List(ListCommand),
+    /// Delete a schedule entry
+    Delete(DeleteCommand),
     /// Emit events as an RSS feed
     Rss(RssCommand),
     /// Emit an iCalendar (.ics) feed
@@ -92,4 +94,11 @@ pub struct IcalCommand {
     /// Write ICS to this file instead of stdout
     #[arg(long)]
     pub output: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct DeleteCommand {
+    /// Numeric event id to remove
+    #[arg(long)]
+    pub id: i64,
 }

@@ -11,7 +11,7 @@ use ics::{
 use rss::{ChannelBuilder, GuidBuilder, ItemBuilder};
 
 use crate::{
-    cli::{AddCommand, IcalCommand, ListCommand, RssCommand},
+    cli::{AddCommand, DeleteCommand, IcalCommand, ListCommand, RssCommand},
     storage::{NewEvent, Storage, StoredEvent},
 };
 
@@ -66,6 +66,16 @@ pub fn list_events(storage: &Storage, cmd: ListCommand) -> Result<()> {
         println!();
     }
 
+    Ok(())
+}
+
+pub fn delete_event(storage: &mut Storage, cmd: DeleteCommand) -> Result<()> {
+    let removed = storage.delete_event(cmd.id)?;
+    if removed {
+        println!("Deleted event #{}", cmd.id);
+    } else {
+        println!("No event found with id {}", cmd.id);
+    }
     Ok(())
 }
 
