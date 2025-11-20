@@ -242,12 +242,13 @@ pub fn import_ics(storage: &mut Storage, cmd: ImportCommand) -> Result<()> {
         for event in calendar.events {
             match convert_ical_event(&event) {
                 Ok(Some(new_event)) => {
-                    if new_event
+                    let duplicate = new_event
                         .uid
                         .as_deref()
-                        .filter(|uid| storage.has_event_with_uid(uid).unwrap_or(false))
-                        .is_some()
-                    {
+                        .map(|uid| storage.has_event_with_uid(uid))
+                        .transpose()?
+                        .unwrap_or(false);
+                    if duplicate {
                         skipped += 1;
                         continue;
                     }
@@ -514,9 +515,7 @@ fn parse_ics_datetime(prop: &ParsedProperty) -> Result<(DateTime<Utc>, bool)> {
             .and_utc();
         return Ok((start, true));
     }
-    let tzid = property_param(prop, "TZID")
-        .and_then(|vals| vals.get(0))
-        .map(|s| s.as_str());
+    let tzid = property_param(prop, "TZID").map(|s| s.as_str());
     let dt = parse_datetime_value(value, tzid)?;
     Ok((dt, false))
 }
@@ -539,9 +538,7 @@ fn parse_ics_end(
                 .and_utc();
             return Ok(end);
         } else {
-            let tzid = property_param(prop, "TZID")
-                .and_then(|vals| vals.get(0))
-                .map(|s| s.as_str());
+            let tzid = property_param(prop, "TZID").map(|s| s.as_str());
             let dt = parse_datetime_value(
                 prop.value
                     .as_deref()
@@ -583,18 +580,21 @@ fn parse_date_value(value: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(value, "%Y%m%d").with_context(|| format!("invalid date '{value}'"))
 }
 
-fn property_param<'a>(prop: &'a ParsedProperty, key: &str) -> Option<&'a Vec<String>> {
-    prop.params.as_ref().and_then(|params| {
-        params
-            .iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case(key))
-            .map(|(_, values)| values)
-    })
+fn property_param<'a>(prop: &'a ParsedProperty, key: &str) -> Option<&'a String> {
+    prop.params
+        .as_ref()
+        .and_then(|params| {
+            params
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(key))
+                .map(|(_, values)| values)
+        })
+        .and_then(|vals| vals.first())
 }
 
 fn is_all_day(prop: &ParsedProperty) -> bool {
     property_param(prop, "VALUE")
-        .map(|vals| vals.iter().any(|v| v.eq_ignore_ascii_case("DATE")))
+        .map(|v| v.eq_ignore_ascii_case("DATE"))
         .unwrap_or_else(|| prop.value.as_ref().map(|v| v.len() == 8).unwrap_or(false))
 }
 
