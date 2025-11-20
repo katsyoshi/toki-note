@@ -9,6 +9,7 @@ pub struct Config {
     pub database: Option<PathBuf>,
     pub rss_output: Option<PathBuf>,
     pub ical_output: Option<PathBuf>,
+    pub import_source: Option<PathBuf>,
 }
 
 pub fn load_config() -> Result<Config> {
