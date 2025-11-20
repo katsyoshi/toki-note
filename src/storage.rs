@@ -9,11 +9,12 @@ pub struct Storage {
 
 impl Storage {
     pub fn new(path: &PathBuf) -> Result<Self> {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("failed to create {}", parent.display()))?;
-            }
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
         }
 
         let conn = Connection::open(path)
@@ -80,7 +81,7 @@ impl Storage {
         let affected = self
             .conn
             .execute("DELETE FROM events WHERE title = ?1", params![title])?;
-        Ok(affected as usize)
+        Ok(affected)
     }
 
     pub fn fetch_events(&self, day_range: Option<(String, String)>) -> Result<Vec<StoredEvent>> {
