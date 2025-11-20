@@ -6,7 +6,7 @@ mod storage;
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Command};
-use commands::{add_event, delete_event, generate_ical, generate_rss, list_events};
+use commands::{add_event, delete_event, generate_ical, generate_rss, import_ics, list_events};
 use config::{load_config, resolve_database_path};
 use storage::Storage;
 
@@ -31,6 +31,12 @@ fn main() -> Result<()> {
                 cmd.output = config.ical_output.clone();
             }
             generate_ical(&storage, cmd)
+        }
+        Command::Import(mut cmd) => {
+            if cmd.path.is_none() {
+                cmd.path = config.import_source.clone();
+            }
+            import_ics(&mut storage, cmd)
         }
     }
 }

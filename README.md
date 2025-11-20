@@ -83,6 +83,12 @@ Generate an iCalendar file:
 toki-note ical --day 2025-08-10 --tz America/Los_Angeles --output schedule.ics
 ```
 
+Import events from an iCalendar file (duplicates are skipped by UID):
+
+```bash
+toki-note import --path path/to/events.ics
+```
+
 ## Configuration
 
 Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed outputs:
@@ -91,6 +97,7 @@ Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.con
 database = "/path/to/custom.db"
 rss_output = "/path/to/feed.xml"
 ical_output = "/path/to/feed.ics"
+import_source = "/path/to/events.ics"
 ```
 
 This file is read on startup before CLI flags are processed; flags always win over config values.

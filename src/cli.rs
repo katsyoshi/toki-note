@@ -24,6 +24,8 @@ pub enum Command {
     Rss(RssCommand),
     /// Emit an iCalendar (.ics) feed
     Ical(IcalCommand),
+    /// Import events from an .ics file
+    Import(ImportCommand),
 }
 
 #[derive(Args)]
@@ -104,4 +106,11 @@ pub struct DeleteCommand {
     /// Event title to remove (deletes matching rows)
     #[arg(long, short = 't')]
     pub title: Option<String>,
+}
+
+#[derive(Args)]
+pub struct ImportCommand {
+    /// Path to the .ics file to import
+    #[arg(long = "path", short = 'p')]
+    pub path: Option<PathBuf>,
 }

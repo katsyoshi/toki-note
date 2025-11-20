@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 pub struct Storage {
     conn: Connection,
@@ -33,7 +33,8 @@ impl Storage {
                 starts_at TEXT NOT NULL,
                 ends_at TEXT NOT NULL,
                 note TEXT NOT NULL DEFAULT '',
-                all_day INTEGER NOT NULL DEFAULT 0
+                all_day INTEGER NOT NULL DEFAULT 0,
+                uid TEXT
             );
             CREATE TABLE IF NOT EXISTS event_tags (
                 event_id INTEGER NOT NULL,
@@ -43,19 +44,27 @@ impl Storage {
             );
             "#,
         )?;
+        let _ = self
+            .conn
+            .execute("ALTER TABLE events ADD COLUMN uid TEXT", []);
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_uid ON events(uid) WHERE uid IS NOT NULL",
+            [],
+        )?;
         Ok(())
     }
 
     pub fn insert_event(&mut self, new_event: NewEvent) -> Result<i64> {
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO events (title, starts_at, ends_at, note, all_day) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO events (title, starts_at, ends_at, note, all_day, uid) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 new_event.title,
                 new_event.starts_at,
                 new_event.ends_at,
                 new_event.note,
                 new_event.all_day as i32,
+                new_event.uid,
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -84,12 +93,24 @@ impl Storage {
         Ok(affected)
     }
 
+    pub fn has_event_with_uid(&self, uid: &str) -> Result<bool> {
+        let exists: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT 1 FROM events WHERE uid = ?1 LIMIT 1",
+                params![uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(exists.is_some())
+    }
+
     pub fn fetch_events(&self, day_range: Option<(String, String)>) -> Result<Vec<StoredEvent>> {
         let sql = if day_range.is_some() {
-            "SELECT id, title, starts_at, ends_at, note, all_day FROM events \
+            "SELECT id, title, starts_at, ends_at, note, all_day, uid FROM events \
              WHERE starts_at < ?2 AND ends_at > ?1 ORDER BY starts_at"
         } else {
-            "SELECT id, title, starts_at, ends_at, note, all_day FROM events \
+            "SELECT id, title, starts_at, ends_at, note, all_day, uid FROM events \
              ORDER BY starts_at"
         };
 
@@ -113,6 +134,7 @@ impl Storage {
                 ends_at: row.get(3)?,
                 note: row.get(4)?,
                 all_day: row.get::<_, i64>(5)? != 0,
+                uid: row.get(6)?,
                 tags: Vec::new(),
             };
 
@@ -135,6 +157,7 @@ pub struct NewEvent {
     pub ends_at: String,
     pub all_day: bool,
     pub tags: Vec<String>,
+    pub uid: Option<String>,
 }
 
 pub struct StoredEvent {
@@ -144,5 +167,7 @@ pub struct StoredEvent {
     pub ends_at: String,
     pub note: String,
     pub all_day: bool,
+    #[allow(dead_code)]
+    pub uid: Option<String>,
     pub tags: Vec<String>,
 }
