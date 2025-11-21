@@ -1,5 +1,9 @@
 # toki-note
 
+<p align="center">
+  <img src="assets/logo.png" alt="toki-note logo" width="200" />
+</p>
+
 `toki-note` is a small Rust CLI that stores personal schedules in a local SQLite database. It focuses on fast data entry via flags, ISO-8601 timestamps, tag support, and all-day events, making it convenient for terminal-driven workflows.
 
 ## Getting Started
