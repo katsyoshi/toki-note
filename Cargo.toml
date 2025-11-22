@@ -16,3 +16,6 @@ rss = "2.0"
 ics = "0.5"
 ical = "0.11"
 rusqlite = { version = "0.31", features = ["bundled"] }
+
+[dev-dependencies]
+assert_cmd = "2.1.1"
