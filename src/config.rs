@@ -81,3 +81,118 @@ impl Config {
             .or_else(|| self.import_source.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{env, fs, sync::Mutex};
+    use tempfile::tempdir;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    struct EnvOverride {
+        key: &'static str,
+        original: Option<std::ffi::OsString>,
+    }
+
+    impl EnvOverride {
+        fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: test serially overrides env vars and restores them before drop.
+            unsafe { env::set_var(key, value) };
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvOverride {
+        fn drop(&mut self) {
+            if let Some(val) = &self.original {
+                // SAFETY: restoring captured env var for test isolation.
+                unsafe { env::set_var(self.key, val) };
+            } else {
+                // SAFETY: removing env var to restore prior unset state.
+                unsafe { env::remove_var(self.key) };
+            }
+        }
+    }
+
+    #[test]
+    fn load_config_reads_structured_sections() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let home = tempdir().unwrap();
+        let _guard = EnvOverride::set_path("XDG_CONFIG_HOME", home.path());
+        let dirs = ProjectDirs::from("dev", "toki-note", "toki-note").expect("project dirs");
+        let path = dirs.config_dir().join("config.toml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            r#"
+            database = "/tmp/custom.db"
+            rss_output = "/tmp/legacy.xml"
+
+            [rss]
+            output = "/tmp/rss.xml"
+
+            [ical]
+            output = "/tmp/ical.ics"
+
+            [import]
+            source = "/tmp/import.ics"
+            "#,
+        )
+        .unwrap();
+
+        let loaded: Config = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(loaded.database.is_some());
+
+        let cfg = load_config().unwrap();
+        assert_eq!(
+            cfg.database.as_deref(),
+            Some(std::path::Path::new("/tmp/custom.db"))
+        );
+        assert_eq!(
+            cfg.rss_output_path().as_deref(),
+            Some(std::path::Path::new("/tmp/rss.xml"))
+        );
+        assert_eq!(
+            cfg.ical_output_path().as_deref(),
+            Some(std::path::Path::new("/tmp/ical.ics"))
+        );
+        assert_eq!(
+            cfg.import_source_path().as_deref(),
+            Some(std::path::Path::new("/tmp/import.ics"))
+        );
+    }
+
+    #[test]
+    fn load_config_defaults_when_missing() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let home = tempdir().unwrap();
+        let _guard = EnvOverride::set_path("XDG_CONFIG_HOME", home.path());
+        let cfg = load_config().unwrap();
+        assert!(cfg.database.is_none());
+        assert!(cfg.rss_output_path().is_none());
+        assert!(cfg.ical_output_path().is_none());
+        assert!(cfg.import_source_path().is_none());
+    }
+
+    #[test]
+    fn resolve_database_uses_provided_path() {
+        let custom = PathBuf::from("/tmp/db.sqlite");
+        let path = resolve_database_path(Some(custom.clone())).unwrap();
+        assert_eq!(path, custom);
+    }
+
+    #[test]
+    fn resolve_database_respects_xdg_data_home() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let data = tempdir().unwrap();
+        let _guard = EnvOverride::set_path("XDG_DATA_HOME", data.path());
+        let expected = ProjectDirs::from("dev", "toki-note", "toki-note")
+            .expect("dirs")
+            .data_dir()
+            .join("toki-note.db");
+        let resolved = resolve_database_path(None).unwrap();
+        assert_eq!(resolved, expected);
+    }
+}

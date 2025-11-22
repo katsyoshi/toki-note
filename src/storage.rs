@@ -171,3 +171,115 @@ pub struct StoredEvent {
     pub uid: Option<String>,
     pub tags: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    struct TempStorage {
+        _dir: tempfile::TempDir,
+        storage: Storage,
+    }
+
+    impl TempStorage {
+        fn new() -> Self {
+            let dir = tempdir().expect("temp dir");
+            let path = dir.path().join("db.sqlite");
+            let storage = Storage::new(&path).expect("storage");
+            Self { _dir: dir, storage }
+        }
+    }
+
+    fn sample_event(title: &str, start: &str, end: &str) -> NewEvent {
+        NewEvent {
+            title: title.to_string(),
+            note: String::new(),
+            starts_at: start.to_string(),
+            ends_at: end.to_string(),
+            all_day: false,
+            tags: Vec::new(),
+            uid: None,
+        }
+    }
+
+    #[test]
+    fn insert_event_lowercases_and_deduplicates_tags() {
+        let mut store = TempStorage::new();
+        let mut event = sample_event(
+            "Demo",
+            "2025-01-01T09:00:00+00:00",
+            "2025-01-01T10:00:00+00:00",
+        );
+        event.tags = vec!["Work".into(), "work".into(), "Home".into()];
+        let id = store.storage.insert_event(event).unwrap();
+
+        let events = store.storage.fetch_events(None).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, id);
+        assert_eq!(events[0].tags, vec!["home", "work"]);
+    }
+
+    #[test]
+    fn fetch_events_filters_by_day_range() {
+        let mut store = TempStorage::new();
+        let first = sample_event(
+            "Inside",
+            "2025-05-01T09:00:00+00:00",
+            "2025-05-01T10:00:00+00:00",
+        );
+        let second = sample_event(
+            "Outside",
+            "2025-05-03T09:00:00+00:00",
+            "2025-05-03T10:00:00+00:00",
+        );
+        store.storage.insert_event(first).unwrap();
+        store.storage.insert_event(second).unwrap();
+
+        let events = store
+            .storage
+            .fetch_events(Some((
+                "2025-05-01T00:00:00+00:00".into(),
+                "2025-05-02T00:00:00+00:00".into(),
+            )))
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].title, "Inside");
+    }
+
+    #[test]
+    fn delete_by_title_removes_rows() {
+        let mut store = TempStorage::new();
+        let event_one = sample_event(
+            "Repeat",
+            "2025-01-01T09:00:00+00:00",
+            "2025-01-01T10:00:00+00:00",
+        );
+        let event_two = sample_event(
+            "Repeat",
+            "2025-01-02T09:00:00+00:00",
+            "2025-01-02T10:00:00+00:00",
+        );
+        store.storage.insert_event(event_one).unwrap();
+        store.storage.insert_event(event_two).unwrap();
+
+        let removed = store.storage.delete_by_title("Repeat").unwrap();
+        assert_eq!(removed, 2);
+        assert!(store.storage.fetch_events(None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn has_event_with_uid_detects_duplicates() {
+        let mut store = TempStorage::new();
+        let mut event = sample_event(
+            "Has UID",
+            "2025-01-01T09:00:00+00:00",
+            "2025-01-01T10:00:00+00:00",
+        );
+        event.uid = Some("abc-123".into());
+        store.storage.insert_event(event).unwrap();
+
+        assert!(store.storage.has_event_with_uid("abc-123").unwrap());
+        assert!(!store.storage.has_event_with_uid("missing").unwrap());
+    }
+}
