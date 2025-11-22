@@ -6,7 +6,7 @@ use clap::{Args, Parser, Subcommand};
 #[command(version, about = "CLI scheduler backed by SQLite")]
 pub struct Cli {
     /// Path to the SQLite database file
-    #[arg(long, short = 'd', global = true)]
+    #[arg(long, short = 'b', global = true)]
     pub database: Option<PathBuf>,
     #[command(subcommand)]
     pub command: Command,
