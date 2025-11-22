@@ -13,7 +13,7 @@ use storage::Storage;
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config()?;
-    let db_path = resolve_database_path(cli.database.or(config.database.clone()))?;
+    let db_path = resolve_database_path(cli.database.or(config.database_path()))?;
     let mut storage = Storage::new(&db_path)?;
 
     match cli.command {

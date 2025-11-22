@@ -105,10 +105,11 @@ SQLite is not designed for concurrent writers over a network filesystem, so try 
 
 ## Configuration
 
-Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed/import outputs:
+Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed/import outputs. Prefer the sectioned form:
 
 ```toml
-database = "/path/to/custom.db"
+[database]
+path = "/path/to/custom.db"
 
 [rss]
 output = "/path/to/feed.xml"
@@ -120,7 +121,7 @@ output = "/path/to/feed.ics"
 source = "/path/to/events.ics"
 ```
 
-The legacy flat keys (`rss_output`, `ical_output`, `import_source`) are still supported for backward compatibility.
+The legacy flat keys (`database`, `rss_output`, `ical_output`, `import_source`) are still supported for backward compatibility.
 
 This file is read on startup before CLI flags are processed; flags always win over config values.
 

@@ -6,7 +6,8 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
-    pub database: Option<PathBuf>,
+    #[serde(default)]
+    pub database: Option<DatabaseSource>,
     #[serde(default)]
     pub rss: RssSection,
     #[serde(default)]
@@ -32,6 +33,18 @@ pub struct IcalSection {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct ImportSection {
     pub source: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum DatabaseSource {
+    Path(PathBuf),
+    Section(DatabaseSection),
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DatabaseSection {
+    pub path: Option<PathBuf>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -63,6 +76,13 @@ pub fn resolve_database_path(input: Option<PathBuf>) -> Result<PathBuf> {
 }
 
 impl Config {
+    pub fn database_path(&self) -> Option<PathBuf> {
+        self.database.as_ref().and_then(|source| match source {
+            DatabaseSource::Path(path) => Some(path.clone()),
+            DatabaseSource::Section(section) => section.path.clone(),
+        })
+    }
+
     pub fn rss_output_path(&self) -> Option<PathBuf> {
         self.rss.output.clone().or_else(|| self.rss_output.clone())
     }
@@ -147,7 +167,7 @@ mod tests {
 
         let cfg = load_config().unwrap();
         assert_eq!(
-            cfg.database.as_deref(),
+            cfg.database_path().as_deref(),
             Some(std::path::Path::new("/tmp/custom.db"))
         );
         assert_eq!(
@@ -170,7 +190,7 @@ mod tests {
         let home = tempdir().unwrap();
         let _guard = EnvOverride::set_path("XDG_CONFIG_HOME", home.path());
         let cfg = load_config().unwrap();
-        assert!(cfg.database.is_none());
+        assert!(cfg.database_path().is_none());
         assert!(cfg.rss_output_path().is_none());
         assert!(cfg.ical_output_path().is_none());
         assert!(cfg.import_source_path().is_none());
@@ -194,5 +214,29 @@ mod tests {
             .join("toki-note.db");
         let resolved = resolve_database_path(None).unwrap();
         assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn database_section_path_is_used_when_present() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let home = tempdir().unwrap();
+        let _guard = EnvOverride::set_path("XDG_CONFIG_HOME", home.path());
+        let dirs = ProjectDirs::from("dev", "toki-note", "toki-note").expect("project dirs");
+        let path = dirs.config_dir().join("config.toml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            r#"
+            [database]
+            path = "/tmp/from-section.db"
+            "#,
+        )
+        .unwrap();
+
+        let cfg = load_config().unwrap();
+        assert_eq!(
+            cfg.database_path().as_deref(),
+            Some(std::path::Path::new("/tmp/from-section.db"))
+        );
     }
 }
