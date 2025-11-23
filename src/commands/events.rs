@@ -1,21 +1,22 @@
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Days, Local, LocalResult, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Days, Duration, Local, LocalResult, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use humantime::parse_duration;
 
 use crate::{
-    cli::{AddCommand, DeleteCommand, ListCommand},
+    cli::{AddCommand, DeleteCommand, ListCommand, MoveCommand},
     storage::{NewEvent, Storage, StoredEvent},
 };
 
 pub fn add_event(storage: &mut Storage, cmd: AddCommand) -> Result<()> {
+    let timing_args = TimingArgs::from_add(&cmd);
     let timing = if cmd.all_day {
         if cmd.duration.is_some() {
             return Err(anyhow!("--duration cannot be used with --all-day"));
         }
-        parse_all_day_range(&cmd)?
+        parse_all_day_range(&timing_args, Duration::days(1))?
     } else {
-        parse_timed_range(&cmd)?
+        parse_timed_range(&timing_args, Duration::minutes(30))?
     };
 
     let new_event = NewEvent {
@@ -96,6 +97,68 @@ pub fn delete_event(storage: &mut Storage, cmd: DeleteCommand) -> Result<()> {
     Ok(())
 }
 
+pub fn move_event(storage: &mut Storage, cmd: MoveCommand) -> Result<()> {
+    let mut event = resolve_move_target(storage, &cmd)?;
+    let timing_args = TimingArgs::from_move(&cmd, &event)?;
+    if !timing_args.has_explicit_input() {
+        return Err(anyhow!(
+            "provide --start/--date/--time/--end/--duration to adjust an event"
+        ));
+    }
+
+    let existing_start = timing_args
+        .existing_start
+        .expect("move timing should include existing start");
+    let existing_end = timing_args
+        .existing_end
+        .expect("move timing should include existing end");
+
+    let timing = if event.all_day {
+        let mut span = existing_end.signed_duration_since(existing_start);
+        if span <= Duration::zero() {
+            span = Duration::days(1);
+        }
+        parse_all_day_range(&timing_args, span)?
+    } else {
+        let mut duration = existing_end.signed_duration_since(existing_start);
+        if duration <= Duration::zero() {
+            duration = Duration::minutes(1);
+        }
+        parse_timed_range(&timing_args, duration)?
+    };
+
+    if !storage.update_event_timing(event.id, &timing.starts_at, &timing.ends_at, event.all_day)? {
+        return Err(anyhow!("failed to update event #{}", event.id));
+    }
+
+    event.starts_at = timing.starts_at;
+    event.ends_at = timing.ends_at;
+    let summary = format_event_timing(&event, &DisplayZone::Local)?;
+    println!("Moved event #{} {}", event.id, summary);
+    Ok(())
+}
+
+fn resolve_move_target(storage: &Storage, cmd: &MoveCommand) -> Result<StoredEvent> {
+    match (cmd.id, cmd.title.as_deref()) {
+        (Some(id), _) => storage
+            .fetch_event_by_id(id)?
+            .ok_or_else(|| anyhow!("No event found with id {id}")),
+        (None, Some(title)) => {
+            let mut matches = storage.fetch_events_by_title(title)?;
+            if matches.is_empty() {
+                Err(anyhow!("No events found titled '{title}'"))
+            } else if matches.len() > 1 {
+                Err(anyhow!(
+                    "Multiple events titled '{title}'. Use --id to specify which one to move."
+                ))
+            } else {
+                Ok(matches.remove(0))
+            }
+        }
+        (None, None) => Err(anyhow!("Provide either --id or --title")),
+    }
+}
+
 pub(super) fn format_event_timing(event: &StoredEvent, zone: &DisplayZone) -> Result<String> {
     let start_utc = parse_utc(&event.starts_at)?;
     let end_utc = parse_utc(&event.ends_at)?;
@@ -169,18 +232,64 @@ pub(super) fn parse_utc(value: &str) -> Result<DateTime<Utc>> {
         .with_timezone(&Utc))
 }
 
-fn parse_all_day_range(cmd: &AddCommand) -> Result<EventTiming> {
-    let start_value = cmd
-        .start
-        .as_deref()
-        .or(cmd.date.as_deref())
-        .ok_or_else(|| anyhow!("provide --start (date) or --date for all-day events"))?;
-    let start_date = parse_date(start_value)?;
+struct TimingArgs<'a> {
+    start: Option<&'a str>,
+    date: Option<&'a str>,
+    time: Option<&'a str>,
+    end: Option<&'a str>,
+    duration: Option<&'a str>,
+    default_date: NaiveDate,
+    existing_start: Option<DateTime<Utc>>,
+    existing_end: Option<DateTime<Utc>>,
+}
 
-    let end_date = if let Some(end) = cmd.end.as_deref() {
-        parse_date(end)?
+impl<'a> TimingArgs<'a> {
+    fn from_add(cmd: &'a AddCommand) -> Self {
+        Self {
+            start: cmd.start.as_deref(),
+            date: cmd.date.as_deref(),
+            time: cmd.time.as_deref(),
+            end: cmd.end.as_deref(),
+            duration: cmd.duration.as_deref(),
+            default_date: Local::now().date_naive(),
+            existing_start: None,
+            existing_end: None,
+        }
+    }
+
+    fn from_move(cmd: &'a MoveCommand, event: &StoredEvent) -> Result<Self> {
+        let existing_start = parse_utc(&event.starts_at)?;
+        let existing_end = parse_utc(&event.ends_at)?;
+        Ok(Self {
+            start: cmd.start.as_deref(),
+            date: cmd.date.as_deref(),
+            time: cmd.time.as_deref(),
+            end: cmd.end.as_deref(),
+            duration: cmd.duration.as_deref(),
+            default_date: existing_start.with_timezone(&Local).date_naive(),
+            existing_start: Some(existing_start),
+            existing_end: Some(existing_end),
+        })
+    }
+
+    fn has_explicit_input(&self) -> bool {
+        self.start.is_some()
+            || self.date.is_some()
+            || self.time.is_some()
+            || self.end.is_some()
+            || self.duration.is_some()
+    }
+}
+
+fn parse_all_day_range(args: &TimingArgs<'_>, default_span: Duration) -> Result<EventTiming> {
+    let start_date = if let Some(value) = args.start.or(args.date) {
+        parse_date(value)?
+    } else if let Some(existing) = args.existing_start {
+        existing.date_naive()
     } else {
-        start_date
+        return Err(anyhow!(
+            "provide --start (date) or --date for all-day events"
+        ));
     };
 
     let start_dt = start_date
@@ -188,12 +297,19 @@ fn parse_all_day_range(cmd: &AddCommand) -> Result<EventTiming> {
         .ok_or_else(|| anyhow!("invalid start date"))?
         .and_utc();
 
-    let end_dt = end_date
-        .succ_opt()
-        .ok_or_else(|| anyhow!("date overflow"))?
-        .and_hms_opt(0, 0, 0)
-        .ok_or_else(|| anyhow!("invalid end date"))?
-        .and_utc();
+    let end_dt = if let Some(end_value) = args.end {
+        let end_date = parse_date(end_value)?;
+        end_date
+            .succ_opt()
+            .ok_or_else(|| anyhow!("date overflow"))?
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| anyhow!("invalid end date"))?
+            .and_utc()
+    } else {
+        start_dt
+            .checked_add_signed(default_span)
+            .ok_or_else(|| anyhow!("date overflow"))?
+    };
 
     Ok(EventTiming {
         starts_at: start_dt.to_rfc3339(),
@@ -308,18 +424,22 @@ pub(super) fn day_range(day: &str) -> Result<(String, String)> {
     Ok((start.to_rfc3339(), end.to_rfc3339()))
 }
 
-fn parse_timed_range(cmd: &AddCommand) -> Result<EventTiming> {
-    let start_dt = if let Some(start_value) = cmd.start.as_deref() {
+fn parse_timed_range(args: &TimingArgs<'_>, default_duration: Duration) -> Result<EventTiming> {
+    let start_dt = if let Some(start_value) = args.start {
         parse_explicit_instant(start_value)?
+    } else if args.date.is_some() || args.time.is_some() || args.existing_start.is_some() {
+        build_start_from_components(args.date, args.time, args.default_date, args.existing_start)?
     } else {
-        build_start_from_components(cmd)?
+        return Err(anyhow!(
+            "provide --start or --date/--time to define a start instant"
+        ));
     };
 
-    let end_dt = if let Some(end_value) = cmd.end.as_deref() {
+    let end_dt = if let Some(end_value) = args.end {
         DateTime::parse_from_rfc3339(end_value)
             .with_context(|| format!("expected RFC3339 timestamp, got '{end_value}'"))?
             .with_timezone(&Utc)
-    } else if let Some(duration_value) = cmd.duration.as_deref() {
+    } else if let Some(duration_value) = args.duration {
         let parsed = parse_duration(duration_value)
             .with_context(|| format!("failed to parse duration '{duration_value}'"))?;
         let chrono_dur = chrono::Duration::from_std(parsed)
@@ -329,7 +449,7 @@ fn parse_timed_range(cmd: &AddCommand) -> Result<EventTiming> {
             .ok_or_else(|| anyhow!("duration pushes end time out of range"))?
     } else {
         start_dt
-            .checked_add_signed(chrono::Duration::minutes(30))
+            .checked_add_signed(default_duration)
             .ok_or_else(|| anyhow!("default duration pushes end time out of range"))?
     };
 
@@ -349,36 +469,46 @@ fn parse_explicit_instant(value: &str) -> Result<DateTime<Utc>> {
         .with_timezone(&Utc))
 }
 
-fn build_start_from_components(cmd: &AddCommand) -> Result<DateTime<Utc>> {
-    let date = resolve_date_or_today(cmd.date.as_deref())?;
-    let time_str = cmd
-        .time
-        .as_deref()
-        .ok_or_else(|| anyhow!("provide --time when --start is omitted"))?;
-    let time = parse_time_of_day(time_str)?;
-    let naive = date.and_time(time);
+fn build_start_from_components(
+    date: Option<&str>,
+    time: Option<&str>,
+    default_date: NaiveDate,
+    fallback_start: Option<DateTime<Utc>>,
+) -> Result<DateTime<Utc>> {
+    if date.is_none() && time.is_none() {
+        return fallback_start.ok_or_else(|| anyhow!("provide --time when --start is omitted"));
+    }
+    let date_value = if let Some(value) = date {
+        parse_date(value)?
+    } else if let Some(existing) = fallback_start {
+        existing.with_timezone(&Local).date_naive()
+    } else {
+        default_date
+    };
+    let time_value = if let Some(value) = time {
+        parse_time_of_day(value)?
+    } else if let Some(existing) = fallback_start {
+        existing.with_timezone(&Local).time()
+    } else {
+        return Err(anyhow!("provide --time when --start is omitted"));
+    };
+    let naive = date_value.and_time(time_value);
     let local_dt = match Local.from_local_datetime(&naive) {
         LocalResult::Single(dt) => dt,
         LocalResult::Ambiguous(first, second) => {
             return Err(anyhow!(
-                "time '{time_str}' is ambiguous ({first} or {second}) due to DST"
+                "time '{}' is ambiguous ({first} or {second}) due to DST",
+                time.unwrap_or("existing")
             ));
         }
         LocalResult::None => {
             return Err(anyhow!(
-                "time '{time_str}' does not exist in the current timezone (DST transition)"
+                "time '{}' does not exist in the current timezone (DST transition)",
+                time.unwrap_or("existing")
             ));
         }
     };
     Ok(local_dt.with_timezone(&Utc))
-}
-
-fn resolve_date_or_today(input: Option<&str>) -> Result<NaiveDate> {
-    if let Some(value) = input {
-        parse_date(value)
-    } else {
-        Ok(Local::now().date_naive())
-    }
 }
 
 fn parse_time_of_day(value: &str) -> Result<NaiveTime> {

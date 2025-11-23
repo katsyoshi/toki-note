@@ -22,6 +22,9 @@ pub enum Command {
     /// Delete a schedule entry
     #[command(alias = "rm", alias = "del")]
     Delete(DeleteCommand),
+    /// Move/adjust an existing schedule entry
+    #[command(alias = "mv")]
+    Move(MoveCommand),
     /// Emit events as an RSS feed
     Rss(RssCommand),
     /// Emit an iCalendar (.ics) feed
@@ -114,6 +117,31 @@ pub struct DeleteCommand {
     /// Event title to remove (deletes matching rows)
     #[arg(long, short = 't')]
     pub title: Option<String>,
+}
+
+#[derive(Args)]
+pub struct MoveCommand {
+    /// Numeric event id to adjust
+    #[arg(long, short = 'i', required_unless_present = "title")]
+    pub id: Option<i64>,
+    /// Event title to adjust (fails if multiple match)
+    #[arg(long, short = 't')]
+    pub title: Option<String>,
+    /// New start instant in RFC3339
+    #[arg(long, short = 's')]
+    pub start: Option<String>,
+    /// Shortcut date (YYYY-MM-DD, today, tomorrow, +2d, etc.)
+    #[arg(long)]
+    pub date: Option<String>,
+    /// Local time-of-day such as 09:00 or 18:30:15
+    #[arg(long)]
+    pub time: Option<String>,
+    /// New end instant in RFC3339
+    #[arg(long, short = 'e')]
+    pub end: Option<String>,
+    /// Duration syntax like 30m, 2h, 1h30m; ignored when --end is provided
+    #[arg(long, short = 'u')]
+    pub duration: Option<String>,
 }
 
 #[derive(Args)]
