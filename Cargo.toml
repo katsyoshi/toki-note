@@ -1,6 +1,6 @@
 [package]
 name = "toki-note"
-version = "0.1.0"
+version = "2025.11.23"
 edition = "2024"
 
 [dependencies]
