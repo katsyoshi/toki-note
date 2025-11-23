@@ -60,3 +60,28 @@ fn ls_alias_works() {
         .assert()
         .success();
 }
+
+#[test]
+fn rm_alias_works() {
+    let data_home = tempdir().expect("temp dir");
+
+    cargo_bin_cmd!("toki-note")
+        .env("XDG_DATA_HOME", data_home.path())
+        .arg("add")
+        .arg("--title")
+        .arg("Remove me")
+        .arg("--date")
+        .arg("2025-12-03")
+        .arg("--time")
+        .arg("15:00")
+        .assert()
+        .success();
+
+    cargo_bin_cmd!("toki-note")
+        .env("XDG_DATA_HOME", data_home.path())
+        .arg("rm")
+        .arg("--title")
+        .arg("Remove me")
+        .assert()
+        .success();
+}

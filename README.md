@@ -77,6 +77,8 @@ Delete an event by id (see ids from `list` output) or by title:
 ```bash
 toki-note delete --id 42
 toki-note delete --title "1:1 sync"
+# or the rm alias
+toki-note rm --id 42
 ```
 
 Generate an RSS feed (stdout) and redirect to a file:
