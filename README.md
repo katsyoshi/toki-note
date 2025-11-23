@@ -30,6 +30,16 @@ toki-note add \
 
 `--end` still works for absolute end instants and always overrides `--duration` when both are supplied.
 
+You can also omit `--start` and provide `--date`/`--time` instead, with relative dates (e.g., `today`, `tomorrow`, `+2d`, `2日後`). When neither `--end` nor `--duration` is provided, a 30-minute slot is assumed.
+
+```bash
+toki-note add \
+  --title "Daily standup" \
+  --date tomorrow \
+  --time 09:30 \
+  --tag work
+```
+
 Add an all-day (or multi-day) entry by supplying dates instead of instants and the `--all-day` flag:
 
 ```bash

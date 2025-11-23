@@ -35,7 +35,13 @@ pub struct AddCommand {
     pub title: String,
     /// Start instant in RFC3339 (e.g. 2024-06-01T09:00:00+09:00) or YYYY-MM-DD when --all-day is set
     #[arg(long, short = 's')]
-    pub start: String,
+    pub start: Option<String>,
+    /// Shortcut date (YYYY-MM-DD, today, tomorrow, +2d, in 3 days...)
+    #[arg(long)]
+    pub date: Option<String>,
+    /// Local time-of-day such as 09:00 or 18:30:15
+    #[arg(long)]
+    pub time: Option<String>,
     /// End instant in RFC3339; optional for --all-day
     #[arg(long, short = 'e')]
     pub end: Option<String>,
