@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Local, NaiveDate, Utc};
+use chrono::{DateTime, Days, Local, LocalResult, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use humantime::parse_duration;
 
@@ -170,7 +170,13 @@ pub(super) fn parse_utc(value: &str) -> Result<DateTime<Utc>> {
 }
 
 fn parse_all_day_range(cmd: &AddCommand) -> Result<EventTiming> {
-    let start_date = parse_date(&cmd.start)?;
+    let start_value = cmd
+        .start
+        .as_deref()
+        .or(cmd.date.as_deref())
+        .ok_or_else(|| anyhow!("provide --start (date) or --date for all-day events"))?;
+    let start_date = parse_date(start_value)?;
+
     let end_date = if let Some(end) = cmd.end.as_deref() {
         parse_date(end)?
     } else {
@@ -196,8 +202,117 @@ fn parse_all_day_range(cmd: &AddCommand) -> Result<EventTiming> {
 }
 
 fn parse_date(input: &str) -> Result<NaiveDate> {
-    NaiveDate::parse_from_str(input, "%Y-%m-%d")
-        .with_context(|| format!("expected YYYY-MM-DD date, got '{input}'"))
+    if let Ok(date) = NaiveDate::parse_from_str(input, "%Y-%m-%d") {
+        return Ok(date);
+    }
+    if let Some(date) = parse_relative_day_with_base(input, Local::now().date_naive()) {
+        return Ok(date);
+    }
+    Err(anyhow!(
+        "expected YYYY-MM-DD date (or relative token), got '{input}'"
+    ))
+}
+
+fn parse_relative_day_with_base(input: &str, base: NaiveDate) -> Option<NaiveDate> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match trimmed {
+        "今日" => return Some(base),
+        "明日" => return offset_date(base, 1),
+        "昨日" => return offset_date(base, -1),
+        _ => {}
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    match lower.as_str() {
+        "today" => return Some(base),
+        "tomorrow" => return offset_date(base, 1),
+        "yesterday" => return offset_date(base, -1),
+        _ => {}
+    }
+    if let Some(days) = parse_english_relative(&lower) {
+        return offset_date(base, days);
+    }
+    if let Some(days) = parse_symbol_relative(&lower) {
+        return offset_date(base, days);
+    }
+    if let Some(days) = parse_japanese_relative(trimmed) {
+        return offset_date(base, days);
+    }
+    None
+}
+
+fn parse_english_relative(input: &str) -> Option<i64> {
+    if let Some(rest) = input.strip_prefix("in ") {
+        let rest = rest.trim();
+        if let Some(num_str) = rest.strip_suffix(" days") {
+            return num_str.trim().parse().ok().map(|n: i64| n);
+        }
+        if let Some(num_str) = rest.strip_suffix(" day") {
+            return num_str.trim().parse().ok().map(|n: i64| n);
+        }
+    }
+    None
+}
+
+fn parse_symbol_relative(input: &str) -> Option<i64> {
+    let mut chars = input.chars();
+    let sign = chars.next()?;
+    if sign != '+' && sign != '-' {
+        return None;
+    }
+    let rest: String = chars.collect();
+    let digits = rest.trim_end_matches('d');
+    if digits.is_empty() {
+        return None;
+    }
+    let value: i64 = digits.parse().ok()?;
+    if sign == '-' {
+        Some(-value)
+    } else {
+        Some(value)
+    }
+}
+
+fn parse_japanese_relative(input: &str) -> Option<i64> {
+    if let Some(value) = input.strip_suffix("日後") {
+        return value.trim().parse().ok().map(|n: i64| n);
+    }
+    if let Some(value) = input.strip_suffix("日前") {
+        return value.trim().parse().ok().map(|n: i64| -n);
+    }
+    None
+}
+
+fn offset_date(base: NaiveDate, days: i64) -> Option<NaiveDate> {
+    if days >= 0 {
+        base.checked_add_days(Days::new(days as u64))
+    } else {
+        base.checked_sub_days(Days::new((-days) as u64))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relative_keywords_support_multiple_languages() {
+        let base = NaiveDate::from_ymd_opt(2025, 5, 1).unwrap();
+        assert_eq!(
+            parse_relative_day_with_base("tomorrow", base),
+            Some(NaiveDate::from_ymd_opt(2025, 5, 2).unwrap())
+        );
+        assert_eq!(
+            parse_relative_day_with_base("+2d", base),
+            Some(NaiveDate::from_ymd_opt(2025, 5, 3).unwrap())
+        );
+        assert_eq!(
+            parse_relative_day_with_base("2日後", base),
+            Some(NaiveDate::from_ymd_opt(2025, 5, 3).unwrap())
+        );
+    }
 }
 
 pub(super) fn day_range(day: &str) -> Result<(String, String)> {
@@ -216,9 +331,11 @@ pub(super) fn day_range(day: &str) -> Result<(String, String)> {
 }
 
 fn parse_timed_range(cmd: &AddCommand) -> Result<EventTiming> {
-    let start_dt = DateTime::parse_from_rfc3339(&cmd.start)
-        .with_context(|| format!("expected RFC3339 timestamp, got '{}'", cmd.start))?
-        .with_timezone(&Utc);
+    let start_dt = if let Some(start_value) = cmd.start.as_deref() {
+        parse_explicit_instant(start_value)?
+    } else {
+        build_start_from_components(cmd)?
+    };
 
     let end_dt = if let Some(end_value) = cmd.end.as_deref() {
         DateTime::parse_from_rfc3339(end_value)
@@ -233,9 +350,9 @@ fn parse_timed_range(cmd: &AddCommand) -> Result<EventTiming> {
             .checked_add_signed(chrono_dur)
             .ok_or_else(|| anyhow!("duration pushes end time out of range"))?
     } else {
-        return Err(anyhow!(
-            "provide either --end or --duration (or --all-day for date-based events)"
-        ));
+        start_dt
+            .checked_add_signed(chrono::Duration::minutes(30))
+            .ok_or_else(|| anyhow!("default duration pushes end time out of range"))?
     };
 
     if end_dt <= start_dt {
@@ -246,6 +363,56 @@ fn parse_timed_range(cmd: &AddCommand) -> Result<EventTiming> {
         starts_at: start_dt.to_rfc3339(),
         ends_at: end_dt.to_rfc3339(),
     })
+}
+
+fn parse_explicit_instant(value: &str) -> Result<DateTime<Utc>> {
+    Ok(DateTime::parse_from_rfc3339(value)
+        .with_context(|| format!("expected RFC3339 timestamp, got '{value}'"))?
+        .with_timezone(&Utc))
+}
+
+fn build_start_from_components(cmd: &AddCommand) -> Result<DateTime<Utc>> {
+    let date = resolve_date_or_today(cmd.date.as_deref())?;
+    let time_str = cmd
+        .time
+        .as_deref()
+        .ok_or_else(|| anyhow!("provide --time when --start is omitted"))?;
+    let time = parse_time_of_day(time_str)?;
+    let naive = date.and_time(time);
+    let local_dt = match Local.from_local_datetime(&naive) {
+        LocalResult::Single(dt) => dt,
+        LocalResult::Ambiguous(first, second) => {
+            return Err(anyhow!(
+                "time '{time_str}' is ambiguous ({first} or {second}) due to DST"
+            ));
+        }
+        LocalResult::None => {
+            return Err(anyhow!(
+                "time '{time_str}' does not exist in the current timezone (DST transition)"
+            ));
+        }
+    };
+    Ok(local_dt.with_timezone(&Utc))
+}
+
+fn resolve_date_or_today(input: Option<&str>) -> Result<NaiveDate> {
+    if let Some(value) = input {
+        parse_date(value)
+    } else {
+        Ok(Local::now().date_naive())
+    }
+}
+
+fn parse_time_of_day(value: &str) -> Result<NaiveTime> {
+    let trimmed = value.trim();
+    for fmt in ["%H:%M:%S", "%H:%M"] {
+        if let Ok(time) = NaiveTime::parse_from_str(trimmed, fmt) {
+            return Ok(time);
+        }
+    }
+    Err(anyhow!(
+        "expected HH:MM or HH:MM:SS time-of-day, got '{value}'"
+    ))
 }
 
 struct EventTiming {
