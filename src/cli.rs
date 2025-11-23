@@ -17,6 +17,7 @@ pub enum Command {
     /// Add a schedule entry
     Add(AddCommand),
     /// List stored schedule entries
+    #[command(alias = "ls")]
     List(ListCommand),
     /// Delete a schedule entry
     Delete(DeleteCommand),
