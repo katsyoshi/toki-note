@@ -293,28 +293,6 @@ fn offset_date(base: NaiveDate, days: i64) -> Option<NaiveDate> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn relative_keywords_support_multiple_languages() {
-        let base = NaiveDate::from_ymd_opt(2025, 5, 1).unwrap();
-        assert_eq!(
-            parse_relative_day_with_base("tomorrow", base),
-            Some(NaiveDate::from_ymd_opt(2025, 5, 2).unwrap())
-        );
-        assert_eq!(
-            parse_relative_day_with_base("+2d", base),
-            Some(NaiveDate::from_ymd_opt(2025, 5, 3).unwrap())
-        );
-        assert_eq!(
-            parse_relative_day_with_base("2日後", base),
-            Some(NaiveDate::from_ymd_opt(2025, 5, 3).unwrap())
-        );
-    }
-}
-
 pub(super) fn day_range(day: &str) -> Result<(String, String)> {
     let date = parse_date(day)?;
     let start = date
@@ -423,4 +401,26 @@ struct EventTiming {
 pub(super) enum DisplayZone {
     Local,
     Named(Tz),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relative_keywords_support_multiple_languages() {
+        let base = NaiveDate::from_ymd_opt(2025, 5, 1).unwrap();
+        assert_eq!(
+            parse_relative_day_with_base("tomorrow", base),
+            Some(NaiveDate::from_ymd_opt(2025, 5, 2).unwrap())
+        );
+        assert_eq!(
+            parse_relative_day_with_base("+2d", base),
+            Some(NaiveDate::from_ymd_opt(2025, 5, 3).unwrap())
+        );
+        assert_eq!(
+            parse_relative_day_with_base("2日後", base),
+            Some(NaiveDate::from_ymd_opt(2025, 5, 3).unwrap())
+        );
+    }
 }
