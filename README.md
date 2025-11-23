@@ -50,10 +50,12 @@ All-day entries must use explicit `--end` (or omit it for a single day); `--dura
 
 Successful inserts print the assigned row id, which will later be used for listing or deleting records.
 
-List all tracked events, ordered by start time (output uses your system timezone unless overridden with `--tz`):
+List all tracked events, ordered by start time (output uses your system timezone unless overridden with `--tz`). You can also use the `ls` alias:
 
 ```bash
 toki-note list
+# or
+toki-note ls
 ```
 
 Filter for a specific day (UTC boundary for the filter; display timezone may be overridden):

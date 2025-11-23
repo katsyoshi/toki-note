@@ -37,3 +37,26 @@ fn add_and_list_event() {
         "expected list output to mention title, got:\n{stdout}"
     );
 }
+
+#[test]
+fn ls_alias_works() {
+    let data_home = tempdir().expect("temp dir");
+
+    cargo_bin_cmd!("toki-note")
+        .env("XDG_DATA_HOME", data_home.path())
+        .arg("add")
+        .arg("--title")
+        .arg("Alias test")
+        .arg("--date")
+        .arg("2025-12-02")
+        .arg("--time")
+        .arg("10:00")
+        .assert()
+        .success();
+
+    cargo_bin_cmd!("toki-note")
+        .env("XDG_DATA_HOME", data_home.path())
+        .arg("ls")
+        .assert()
+        .success();
+}
