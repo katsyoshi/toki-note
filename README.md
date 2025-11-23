@@ -144,6 +144,10 @@ source = "/path/to/events.ics"
 
 This file is read on startup before CLI flags are processed; flags always win over config values.
 
+## Versioning
+
+Releases follow a date-based scheme: `YYYY.MM.DD` (e.g., `2025.11.23`). If multiple releases happen on the same day, the package version will be bumped to the next date. Breaking changes are still noted in the CHANGELOG and release notes even though the version number does not follow SemVer semantics.
+
 ## Development
 
 - `cargo fmt` to keep Rust style consistent.
