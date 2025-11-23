@@ -1,6 +1,14 @@
 [package]
 name = "toki-note"
 version = "2025.11.23"
+description = "Tiny SQLite-backed CLI for quickly adding, listing, and exporting personal schedules"
+license = "MIT"
+repository = "https://github.com/katsyoshi/toki-note"
+homepage = "https://github.com/katsyoshi/toki-note"
+documentation = "https://github.com/katsyoshi/toki-note"
+readme = "README.md"
+keywords = ["cli", "calendar", "schedule"]
+categories = ["command-line-utilities"]
 edition = "2024"
 
 [dependencies]
