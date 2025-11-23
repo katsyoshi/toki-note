@@ -20,6 +20,7 @@ pub enum Command {
     #[command(alias = "ls")]
     List(ListCommand),
     /// Delete a schedule entry
+    #[command(alias = "rm", alias = "del")]
     Delete(DeleteCommand),
     /// Emit events as an RSS feed
     Rss(RssCommand),
