@@ -7,17 +7,13 @@ use serde::Deserialize;
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
-    pub database: Option<DatabaseSource>,
+    pub database: Option<DatabaseSection>,
     #[serde(default)]
     pub rss: RssSection,
     #[serde(default)]
     pub ical: IcalSection,
     #[serde(default)]
     pub import: ImportSection,
-    // legacy flat keys
-    pub rss_output: Option<PathBuf>,
-    pub ical_output: Option<PathBuf>,
-    pub import_source: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -33,13 +29,6 @@ pub struct IcalSection {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct ImportSection {
     pub source: Option<PathBuf>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
-pub enum DatabaseSource {
-    Path(PathBuf),
-    Section(DatabaseSection),
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -77,28 +66,21 @@ pub fn resolve_database_path(input: Option<PathBuf>) -> Result<PathBuf> {
 
 impl Config {
     pub fn database_path(&self) -> Option<PathBuf> {
-        self.database.as_ref().and_then(|source| match source {
-            DatabaseSource::Path(path) => Some(path.clone()),
-            DatabaseSource::Section(section) => section.path.clone(),
-        })
+        self.database
+            .as_ref()
+            .and_then(|section| section.path.clone())
     }
 
     pub fn rss_output_path(&self) -> Option<PathBuf> {
-        self.rss.output.clone().or_else(|| self.rss_output.clone())
+        self.rss.output.clone()
     }
 
     pub fn ical_output_path(&self) -> Option<PathBuf> {
-        self.ical
-            .output
-            .clone()
-            .or_else(|| self.ical_output.clone())
+        self.ical.output.clone()
     }
 
     pub fn import_source_path(&self) -> Option<PathBuf> {
-        self.import
-            .source
-            .clone()
-            .or_else(|| self.import_source.clone())
+        self.import.source.clone()
     }
 }
 
@@ -147,8 +129,8 @@ mod tests {
         fs::write(
             &path,
             r#"
-            database = "/tmp/custom.db"
-            rss_output = "/tmp/legacy.xml"
+            [database]
+            path = "/tmp/custom.db"
 
             [rss]
             output = "/tmp/rss.xml"
@@ -161,9 +143,6 @@ mod tests {
             "#,
         )
         .unwrap();
-
-        let loaded: Config = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert!(loaded.database.is_some());
 
         let cfg = load_config().unwrap();
         assert_eq!(

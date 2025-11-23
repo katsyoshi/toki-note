@@ -13,7 +13,7 @@ rustup default stable   # first-time toolchain setup
 cargo build             # compile the CLI
 ```
 
-By default the binary writes to `$XDG_DATA_HOME/toki-note/toki-note.db` (e.g. `~/.local/share/toki-note/toki-note.db`). Override with `--database path/to/file.db` or set the `database` field in the config file described below.
+By default the binary writes to `$XDG_DATA_HOME/toki-note/toki-note.db` (e.g. `~/.local/share/toki-note/toki-note.db`). Override with `--database path/to/file.db` or set the `[database]` section described below.
 
 ## Usage
 
@@ -105,7 +105,7 @@ SQLite is not designed for concurrent writers over a network filesystem, so try 
 
 ## Configuration
 
-Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed/import outputs. Prefer the sectioned form:
+Optional settings live in `$XDG_CONFIG_HOME/toki-note/config.toml` (e.g. `~/.config/toki-note/config.toml`). You can predefine paths for the database and feed/import outputs:
 
 ```toml
 [database]
@@ -120,8 +120,6 @@ output = "/path/to/feed.ics"
 [import]
 source = "/path/to/events.ics"
 ```
-
-The legacy flat keys (`database`, `rss_output`, `ical_output`, `import_source`) are still supported for backward compatibility.
 
 This file is read on startup before CLI flags are processed; flags always win over config values.
 
