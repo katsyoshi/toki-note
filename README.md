@@ -81,6 +81,12 @@ toki-note delete --title "1:1 sync"
 toki-note rm --id 42
 ```
 
+Adjust an existing entry when you mis-scheduled it (aliases: `mv`, `move`):
+
+```bash
+toki-note move --id 42 --date 2025-08-11 --time 10:30
+```
+
 Generate an RSS feed (stdout) and redirect to a file:
 
 ```bash

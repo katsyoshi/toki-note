@@ -1,6 +1,14 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use tempfile::tempdir;
 
+fn parse_row_id(output: &[u8]) -> i64 {
+    String::from_utf8_lossy(output)
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("Stored event #"))
+        .and_then(|v| v.trim().parse().ok())
+        .expect("row id in output")
+}
+
 #[test]
 fn add_and_list_event() {
     let data_home = tempdir().expect("temp dir");
@@ -84,4 +92,47 @@ fn rm_alias_works() {
         .arg("Remove me")
         .assert()
         .success();
+}
+
+#[test]
+fn move_command_updates_event() {
+    let data_home = tempdir().expect("temp dir");
+
+    let add_output = cargo_bin_cmd!("toki-note")
+        .env("XDG_DATA_HOME", data_home.path())
+        .arg("add")
+        .arg("--title")
+        .arg("Move me")
+        .arg("--date")
+        .arg("2025-12-04")
+        .arg("--time")
+        .arg("08:00")
+        .output()
+        .expect("add output");
+    assert!(add_output.status.success());
+    let id = parse_row_id(&add_output.stdout);
+
+    cargo_bin_cmd!("toki-note")
+        .env("XDG_DATA_HOME", data_home.path())
+        .arg("move")
+        .arg("--id")
+        .arg(id.to_string())
+        .arg("--start")
+        .arg("2025-12-05T14:45:00+00:00")
+        .assert()
+        .success();
+
+    let list = cargo_bin_cmd!("toki-note")
+        .env("XDG_DATA_HOME", data_home.path())
+        .arg("list")
+        .arg("--tz")
+        .arg("UTC")
+        .output()
+        .expect("list after move");
+    assert!(list.status.success());
+    let stdout = String::from_utf8_lossy(&list.stdout);
+    assert!(
+        stdout.contains("2025-12-05 14:45 UTC"),
+        "expected moved time, got:\n{stdout}"
+    );
 }

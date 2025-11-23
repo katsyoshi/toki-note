@@ -54,6 +54,56 @@ impl Storage {
         Ok(())
     }
 
+    pub fn fetch_event_by_id(&self, id: i64) -> Result<Option<StoredEvent>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, starts_at, ends_at, note, all_day, uid FROM events WHERE id = ?1",
+        )?;
+        let event = stmt
+            .query_row(params![id], |row| {
+                Ok(StoredEvent {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    starts_at: row.get(2)?,
+                    ends_at: row.get(3)?,
+                    note: row.get(4)?,
+                    all_day: row.get::<_, i64>(5)? != 0,
+                    uid: row.get(6)?,
+                    tags: Vec::new(),
+                })
+            })
+            .optional()?;
+        if let Some(mut event) = event {
+            event.tags = self.load_tags(event.id)?;
+            Ok(Some(event))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn fetch_events_by_title(&self, title: &str) -> Result<Vec<StoredEvent>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, starts_at, ends_at, note, all_day, uid FROM events \
+             WHERE title = ?1 ORDER BY starts_at",
+        )?;
+        let mut rows = stmt.query(params![title])?;
+        let mut events = Vec::new();
+        while let Some(row) = rows.next()? {
+            let mut event = StoredEvent {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                starts_at: row.get(2)?,
+                ends_at: row.get(3)?,
+                note: row.get(4)?,
+                all_day: row.get::<_, i64>(5)? != 0,
+                uid: row.get(6)?,
+                tags: Vec::new(),
+            };
+            event.tags = self.load_tags(event.id)?;
+            events.push(event);
+        }
+        Ok(events)
+    }
+
     pub fn insert_event(&mut self, new_event: NewEvent) -> Result<i64> {
         let tx = self.conn.transaction()?;
         tx.execute(
@@ -147,6 +197,32 @@ impl Storage {
         }
 
         Ok(events)
+    }
+
+    pub fn update_event_timing(
+        &mut self,
+        id: i64,
+        starts_at: &str,
+        ends_at: &str,
+        all_day: bool,
+    ) -> Result<bool> {
+        let affected = self.conn.execute(
+            "UPDATE events SET starts_at = ?1, ends_at = ?2, all_day = ?3 WHERE id = ?4",
+            params![starts_at, ends_at, all_day as i32, id],
+        )?;
+        Ok(affected == 1)
+    }
+
+    fn load_tags(&self, event_id: i64) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT tag FROM event_tags WHERE event_id = ?1 ORDER BY tag")?;
+        let rows = stmt.query_map(params![event_id], |tag_row| tag_row.get(0))?;
+        let mut tags = Vec::new();
+        for tag in rows {
+            tags.push(tag?);
+        }
+        Ok(tags)
     }
 }
 
