@@ -9,8 +9,9 @@
 ## Getting Started
 
 ```bash
-rustup default stable   # first-time toolchain setup
-cargo build             # compile the CLI
+rustup default stable         # first-time toolchain setup
+cargo build                   # compile the CLI locally
+cargo install toki-note       # crates.io release (provides `toki-note` binary)
 ```
 
 By default the binary writes to `$XDG_DATA_HOME/toki-note/toki-note.db` (e.g. `~/.local/share/toki-note/toki-note.db`). Override with `--database path/to/file.db` or set the `[database]` section described below.
